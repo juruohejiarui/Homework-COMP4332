@@ -1,0 +1,2 @@
+# python bert.py --train_csv ../data/train.csv --valid_csv ../data/valid.csv --epochs 3 --batch_size 64 --save_path my_best_model.pt
+python bert.py --train_csv ../data/train.csv --valid_csv ../data/valid.csv --epochs 3 --batch_size 64 --save_path best_robert.pt --model_name ~/Documents/Resources/Models/Chat/roberta-large
