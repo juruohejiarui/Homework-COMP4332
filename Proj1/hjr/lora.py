@@ -23,7 +23,7 @@ valid_df = pd.read_csv('../data/valid.csv')
 train_dataset = Dataset.from_pandas(train_df[['text', 'label']])
 valid_dataset = Dataset.from_pandas(valid_df[['text', 'label']])
 
-model_name = "mistralai/Mistral-7B-v0.1"
+model_name = "~/Documents/Resources/Models/Chat/qwen3.5-4b"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token  # Mistral 需要设置 pad_token
 

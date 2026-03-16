@@ -12,10 +12,14 @@ from sklearn.metrics import f1_score, accuracy_score
 from tqdm import tqdm, trange
 import argparse
 import logging
+import datetime
+import csv
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+his_path = 'his.csv'
 
 # -------------------- 1. Focal Loss 实现 --------------------
 class FocalLoss(nn.Module):
@@ -230,6 +234,12 @@ def main(args):
             print(f'New best model saved with Macro F1: {best_macro_f1:.4f}')
 
     print(f'Training completed. Best Macro F1: {best_macro_f1:.4f}')
+
+    _, val_acc, val_f1 = eval_epoch(model, valid_loader, loss_fn, device)
+
+    with open(his_path, mode='a', newline='', encoding='utf-8') as f :
+        writer = csv.writer(f)
+        writer.writerow((datetime.datetime.now(), val_f1, val_acc))
 
 # -------------------- 5. 参数解析 --------------------
 if __name__ == '__main__':
