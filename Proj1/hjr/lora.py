@@ -1,6 +1,6 @@
 # 环境准备 (需要安装较新的库)
 # pip install torch transformers accelerate peft bitsandbytes datasets scikit-learn
-
+import os
 import torch
 from transformers import (
     Qwen3_5Tokenizer,
@@ -11,6 +11,7 @@ from transformers import (
     Trainer, 
     DataCollatorWithPadding
 )
+from focalloss import FocalLoss
 from peft import LoraConfig, TaskType, get_peft_model
 from datasets import Dataset
 import pandas as pd
@@ -18,6 +19,24 @@ from sklearn.metrics import f1_score, accuracy_score
 import numpy as np
 import torch.nn as nn
 import tensorboard
+
+loss_func : FocalLoss = None
+epochs = 3
+lr = 1e-4
+num_labels = 7
+gamma = 2
+name = './lora-qwen3-4b-focalloss'
+
+class ImbalanceTrainer(Trainer) :
+    def __init__(self, alpha, **kwargs) :
+        super(ImbalanceTrainer, self).__init__(**kwargs)
+        # self.loss_func = FocalLoss(gamma=gamma, alpha=alpha.to('cuda'))
+        self.loss_func = nn.CrossEntropyLoss(alpha.to('cuda'))
+    
+    def compute_loss(self, model, inputs, return_outputs = False, num_items_in_batch = None):
+        output = model(**inputs)
+        loss = self.loss_func(output.logits, inputs['labels'])
+        return (loss, {'logits': output.logits}) if return_outputs else loss
 
 # 1. 加载数据和tokenizer (数据格式与之前相同)
 train_df = pd.read_csv('../data/train.csv')
@@ -49,11 +68,11 @@ base_model = Qwen3_5ForSequenceClassification.from_pretrained(
 # print(base_model)
 
 # replace (score)
-base_model.score = nn.Linear(base_model.score.in_features, 7)
+base_model.score = nn.Linear(base_model.score.in_features, num_labels)
 base_model.score.requires_grad_()
-base_model.config.num_labels = 7
+base_model.config.num_labels = num_labels
 
-print(base_model)
+# print(base_model)
 
 # LoRA 配置
 lora_config = LoraConfig(
@@ -76,17 +95,25 @@ def compute_metrics(eval_pred):
     accuracy = accuracy_score(labels, predictions)
     return {"macro_f1": macro_f1, "accuracy": accuracy}
 
+# 计算类别权重 alpha（基于训练集频率）
+labels_train = train_df['label'].values
+class_counts = np.bincount(labels_train, minlength=num_labels)
+total = len(labels_train)
+alpha = total / (num_labels * (class_counts + 1e-6))   # 逆频率
+alpha = torch.tensor(alpha, dtype=torch.float)
+
 # 4. 设置训练参数
 training_args = TrainingArguments(
-    output_dir="./lora-qwen3-4b",
+    output_dir=name,
+    dataloader_num_workers=4,
     per_device_train_batch_size=16,   # 4-bit 量化下，8的batch在48G显存内很安全
-    per_device_eval_batch_size=64,
-    learning_rate=1.5e-4,               # LoRA 通常需要比全参数微调更高的LR
-    num_train_epochs=3,
+    per_device_eval_batch_size=128,
+    learning_rate=lr,               # LoRA 通常需要比全参数微调更高的LR
+    num_train_epochs=epochs,
 
     lr_scheduler_type='cosine',
     warmup_steps=100,
-    weight_decay=0.1,
+    weight_decay=0.01,
 
     logging_steps=25,
 
@@ -105,24 +132,28 @@ training_args = TrainingArguments(
     remove_unused_columns=False,
     report_to=["tensorboard"],                # 关键：指定使用TensorBoard
     logging_dir="./logs",                     # TensorBoard日志目录
-    run_name="lora-qwen3-4b" # 实验名称
+    run_name=name # 实验名称
 )
 
 # 5. 开始训练
 trainer = Trainer(
+# trainer = ImbalanceTrainer(
+#     alpha=alpha,
     model=model,
     args=training_args,
     train_dataset=tokenized_train,
     eval_dataset=tokenized_valid,
     processing_class=tokenizer,
     data_collator=data_collator,
+    # compute_loss_func=compute_loss,
     compute_metrics=compute_metrics,
 )
 
 trainer.train()
 
 # 6. 保存最终模型
-output_path = "./lora-qwen3-4b/merged"
+output_path = os.path.join(name, "merged")
+os.makedirs(output_path, exist_ok=True)
 merged_model = model.merge_and_unload()
 merged_model.save_pretrained(output_path)
 tokenizer.save_pretrained(output_path)

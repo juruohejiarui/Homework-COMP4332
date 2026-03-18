@@ -14,46 +14,9 @@ from transformers import (
     Trainer,
     DataCollatorWithPadding,
 )
-from safetensors.torch import save_model
+from focalloss import FocalLoss
 from peft import LoraConfig, TaskType, get_peft_model
 from sklearn.metrics import f1_score, accuracy_score
-
-# -------------------- 1. Focal Loss 实现 --------------------
-class FocalLoss(nn.Module):
-    def __init__(self, gamma=2.0, alpha=None, reduction='mean'):
-        """
-        gamma: 聚焦参数，减少易分类样本的权重
-        alpha: 类别权重（tensor），若为None则使用均匀权重
-        """
-        super(FocalLoss, self).__init__()
-        self.gamma = gamma
-        self.alpha = alpha
-        self.reduction = reduction
-
-    def forward(self, logits, targets):
-        """
-        logits: [batch_size, num_classes]
-        targets: [batch_size]
-        """
-        log_probs = F.log_softmax(logits, dim=-1)          # log(softmax)
-        probs = torch.exp(log_probs)                       # softmax概率
-        # 提取每个样本正确类别的log_prob和prob
-        log_pt = log_probs.gather(1, targets.view(-1, 1)).squeeze()
-        pt = probs.gather(1, targets.view(-1, 1)).squeeze()
-
-        focal_weight = (1 - pt) ** self.gamma
-        if self.alpha is not None:
-            alpha_t = self.alpha.gather(0, targets)
-            focal_weight = alpha_t * focal_weight
-
-        loss = -focal_weight * log_pt
-
-        if self.reduction == 'mean':
-            return loss.mean()
-        elif self.reduction == 'sum':
-            return loss.sum()
-        else:
-            return loss
 
 # -------------------- 2. 自定义分类模型（嵌入模型 + 分类头） --------------------
 class EmbeddingForClassification(nn.Module):
@@ -63,7 +26,7 @@ class EmbeddingForClassification(nn.Module):
         self.num_labels = num_labels
         self.embedding_dim = embedding_dim
         self.classifier = nn.Linear(embedding_dim, num_labels)
-        self.focal_loss = FocalLoss(gamma=focal_loss_gamma, alpha=class_weights)
+        self.loss_func = FocalLoss(gamma=focal_loss_gamma, alpha=class_weights)
 
     def forward(self, input_ids, attention_mask, labels=None):
         # 获取嵌入表示
@@ -73,7 +36,7 @@ class EmbeddingForClassification(nn.Module):
 
         loss = None
         if labels is not None:
-            loss = self.focal_loss(logits, labels)
+            loss = self.loss_func(logits, labels)
 
         return {"loss": loss, "logits": logits}   # Trainer 需要这种格式
     
@@ -213,7 +176,7 @@ def main():
         num_train_epochs=epochs,
         lr_scheduler_type='cosine',
         warmup_steps=100,
-        weight_decay=0.1,
+        weight_decay=0.01,
 
         logging_steps=25,
         eval_strategy="steps",
