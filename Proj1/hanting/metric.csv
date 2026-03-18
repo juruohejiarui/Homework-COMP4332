@@ -1,0 +1,10 @@
+,Precision,Recall,F1-Score,Support
+joy ,0.8,0.88,0.84,1941
+fear ,0.65,0.69,0.67,72
+sadness ,0.61,0.68,0.64,266
+neutral ,0.71,0.56,0.63,1592
+anger,0.57,0.62,0.59,555
+surprise ,0.56,0.61,0.58,459
+disgust ,0.44,0.51,0.47,61
+macro avg,0.62,0.65,0.63,4946
+weighted avg,0.71,0.7,0.7,4946
