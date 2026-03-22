@@ -1,8 +1,9 @@
 import argparse
 import datetime
+import json
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -40,11 +41,71 @@ def compute_metrics(eval_pred):
     return {"macro_f1": macro_f1, "accuracy": acc}
 
 
+def save_training_logs_and_curve(
+    trainer_log_history: List[dict],
+    logs_dir: Path,
+    model_tag: str,
+    valid_macro_f1: float,
+) -> None:
+    """
+    将 Trainer 的日志历史保存为 jsonl，并输出训练曲线（loss vs step）。
+    """
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # 1) 原始日志，便于后续复盘
+    history_path = logs_dir / f"{model_tag}_{stamp}_history.jsonl"
+    with history_path.open("w", encoding="utf-8") as f:
+        for row in trainer_log_history:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    # 2) 训练曲线（优先 loss）
+    loss_steps = []
+    losses = []
+    eval_steps = []
+    eval_f1s = []
+    for row in trainer_log_history:
+        if "loss" in row and "step" in row:
+            loss_steps.append(row["step"])
+            losses.append(row["loss"])
+        if "eval_macro_f1" in row and "step" in row:
+            eval_steps.append(row["step"])
+            eval_f1s.append(row["eval_macro_f1"])
+
+    try:
+        import matplotlib.pyplot as plt
+
+        fig, ax1 = plt.subplots(figsize=(9, 5))
+        if loss_steps:
+            ax1.plot(loss_steps, losses, label="train_loss")
+            ax1.set_xlabel("step")
+            ax1.set_ylabel("loss")
+            ax1.grid(alpha=0.3)
+
+        # 若训练过程里有 eval_macro_f1，叠加第二坐标轴；没有则只标注最终 F1
+        if eval_steps:
+            ax2 = ax1.twinx()
+            ax2.plot(eval_steps, eval_f1s, color="tab:orange", label="eval_macro_f1")
+            ax2.set_ylabel("macro_f1")
+
+        ax1.set_title(f"{model_tag} training curve | final_valid_macro_f1={valid_macro_f1:.4f}")
+        curve_path = logs_dir / f"{model_tag}_{stamp}_curve.png"
+        fig.tight_layout()
+        fig.savefig(curve_path, dpi=150)
+        plt.close(fig)
+    except Exception as e:
+        # 不阻塞训练流程；仅记录绘图失败信息
+        err_path = logs_dir / f"{model_tag}_{stamp}_curve_error.txt"
+        with err_path.open("w", encoding="utf-8") as f:
+            f.write(str(e))
+
+
 def train_single_model(
     model_name: str,
     data_dir: Path,
     run_root: Path,
     model_tag: str,
+    logs_dir: Optional[Path] = None,
     num_labels: int = 7,
     num_epochs: int = 3,
     train_batch_size: int = 16,
@@ -68,7 +129,11 @@ def train_single_model(
     valid_df = pd.read_csv(data_dir / "valid.csv")
     test_df = pd.read_csv(data_dir / "test_no_label.csv")
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # DeBERTa-v3 的 fast tokenizer 与部分 transformers 版本不兼容，用 slow 避免 vocab_file None 报错
+    if model_name == "microsoft/deberta-v3-base":
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     train_encodings = tokenizer(
         train_df["text"].tolist(),
@@ -108,6 +173,9 @@ def train_single_model(
         learning_rate=2e-5,
         weight_decay=0.01,
         logging_steps=50,
+        save_strategy="steps",
+        save_steps=2000,
+        save_total_limit=5,
     )
 
     trainer = Trainer(
@@ -124,6 +192,22 @@ def train_single_model(
     valid_outputs = trainer.predict(valid_dataset)
     valid_preds = np.argmax(valid_outputs.predictions, axis=-1)
     valid_macro_f1 = f1_score(valid_df["label"].values, valid_preds, average="macro")
+
+    # 将当前模型在验证集上的 Macro-F1 记录到 log 文件中
+    if logs_dir is not None:
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        log_path = logs_dir / f"{model_tag}.log"
+        with log_path.open("a", encoding="utf-8") as log_f:
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_f.write(
+                f"[{now_str}] model={model_tag}, valid_macro_f1={valid_macro_f1:.6f}\n"
+            )
+        save_training_logs_and_curve(
+            trainer_log_history=trainer.state.log_history,
+            logs_dir=logs_dir,
+            model_tag=model_tag,
+            valid_macro_f1=valid_macro_f1,
+        )
 
     valid_pred_path = run_dir / f"{model_tag}_valid_pred.csv"
     pd.DataFrame(
@@ -197,6 +281,18 @@ def main():
         default=3,
         help="每个模型的训练 epoch 数",
     )
+    parser.add_argument(
+        "--train_batch_size",
+        type=int,
+        default=16,
+        help="训练时的 per-device batch size",
+    )
+    parser.add_argument(
+        "--eval_batch_size",
+        type=int,
+        default=64,
+        help="验证/测试时的 per-device batch size",
+    )
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
@@ -206,6 +302,9 @@ def main():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_root = output_root / timestamp
     run_root.mkdir(parents=True, exist_ok=True)
+
+    # 本次运行的 log 目录，用于记录各模型的验证集 F1
+    logs_dir = run_root / "logs"
 
     print(f"本次运行输出目录: {run_root}")
 
@@ -223,8 +322,11 @@ def main():
             data_dir=data_dir,
             run_root=run_root,
             model_tag=tag,
+            logs_dir=logs_dir,
             num_labels=7,
             num_epochs=args.epochs,
+            train_batch_size=args.train_batch_size,
+            eval_batch_size=args.eval_batch_size,
         )
         model_artifacts[tag] = artifacts
 

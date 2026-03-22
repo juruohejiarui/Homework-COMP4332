@@ -2,3 +2,5 @@
 *.pt
 /Proj1/hjr/*-qwen3-4b*
 *.pyc
+Proj1/SiruiChen/Processed_data
+Proj1/SiruiChen/training_output
