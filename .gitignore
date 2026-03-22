@@ -1,5 +1,4 @@
 /.DS_Store
 *.pt
-/Proj1/hjr/lora-qwen3-4b
-/Proj1/hjr/embed-qwen3-4b
-/Proj1/hjr/lora-qwen3-4b-focalloss
+/Proj1/hjr/*-qwen3-4b*
+*.pyc

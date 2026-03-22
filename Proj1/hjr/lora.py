@@ -21,22 +21,11 @@ import torch.nn as nn
 import tensorboard
 
 loss_func : FocalLoss = None
-epochs = 3
-lr = 1e-4
+epochs = 4
+lr = 2e-5
 num_labels = 7
 gamma = 2
-name = './lora-qwen3-4b-focalloss'
-
-class ImbalanceTrainer(Trainer) :
-    def __init__(self, alpha, **kwargs) :
-        super(ImbalanceTrainer, self).__init__(**kwargs)
-        # self.loss_func = FocalLoss(gamma=gamma, alpha=alpha.to('cuda'))
-        self.loss_func = nn.CrossEntropyLoss(alpha.to('cuda'))
-    
-    def compute_loss(self, model, inputs, return_outputs = False, num_items_in_batch = None):
-        output = model(**inputs)
-        loss = self.loss_func(output.logits, inputs['labels'])
-        return (loss, {'logits': output.logits}) if return_outputs else loss
+name = './lora-qwen3-4b-l'
 
 # 1. 加载数据和tokenizer (数据格式与之前相同)
 train_df = pd.read_csv('../data/train.csv')
@@ -77,7 +66,7 @@ base_model.config.num_labels = num_labels
 # LoRA 配置
 lora_config = LoraConfig(
     task_type=TaskType.SEQ_CLS,
-    r=8,                # 低秩矩阵的维度
+    r=16,                # 低秩矩阵的维度
     lora_alpha=32,      # 缩放参数
     target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],  # 常见设置
     lora_dropout=0.1,
@@ -105,20 +94,20 @@ alpha = torch.tensor(alpha, dtype=torch.float)
 # 4. 设置训练参数
 training_args = TrainingArguments(
     output_dir=name,
-    dataloader_num_workers=4,
+    dataloader_num_workers=16,
     per_device_train_batch_size=16,   # 4-bit 量化下，8的batch在48G显存内很安全
     per_device_eval_batch_size=128,
     learning_rate=lr,               # LoRA 通常需要比全参数微调更高的LR
     num_train_epochs=epochs,
 
-    lr_scheduler_type='cosine',
+    lr_scheduler_type='linear',
     warmup_steps=100,
     weight_decay=0.01,
 
-    logging_steps=25,
+    logging_steps=50,
 
     eval_strategy="steps",
-    eval_steps=150,
+    eval_steps=200,
 
     save_strategy="no",
     # save_steps=450,

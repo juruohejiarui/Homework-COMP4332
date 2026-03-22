@@ -42,13 +42,12 @@ def predict(model, dataloader, device):
             predictions.extend(preds)
     return predictions
 
-def main():
+def main(model_path : str = 'lora-qwen3-4b-l/merged', res_suffix : str = 'l'):
     # 配置路径
-    model_path = "lora-qwen3-4b/merged"          # 合并后模型的保存路径
     valid_path = "../data/valid.csv"             # 验证集路径
     test_path = "../data/test_no_label.csv"      # 测试集路径
-    valid_out = "pred_valid_new.csv"                  # 验证集输出文件
-    test_out = "pred_test_new.csv"                    # 测试集输出文件
+    valid_out = f"pred_valid_{res_suffix}.csv"                  # 验证集输出文件
+    test_out = f"pred_test_{res_suffix}.csv"                    # 测试集输出文件
 
     # 设备设置
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

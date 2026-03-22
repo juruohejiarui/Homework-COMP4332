@@ -89,10 +89,10 @@ def main():
     num_labels = 7
     max_length = 128
     batch_size = 16
-    epochs = 3
-    lr = 1e-4
+    epochs = 4
+    lr = 1.3e-5
     gamma = 2.0                         # Focal Loss gamma
-    output_dir = "./embed-qwen3-4b"
+    output_dir = "./embed-qwen3-4b-tinylr"
 
     # 加载数据
     train_df, valid_df = load_and_filter_data(train_csv, valid_csv)
@@ -210,7 +210,7 @@ def main():
     trainer.train()
 
     # 保存最终模型（分类头和 LoRA 权重）
-    output_dir = "./embed-qwen3-4b/merged"
+    output_dir = f"{output_dir}/merged"
     model.base_model = model.base_model.merge_and_unload()
     model.base_model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
