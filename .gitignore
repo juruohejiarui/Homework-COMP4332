@@ -1,6 +1,7 @@
 /.DS_Store
 *.pt
-/Proj1/hjr/*-qwen3-4b*
+Proj1/hjr/*/merged
+Proj1/hjr/*/checkpoint*
 *.pyc
 Proj1/SiruiChen/Processed_data
 Proj1/SiruiChen/training_output
