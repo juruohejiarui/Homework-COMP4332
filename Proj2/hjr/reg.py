@@ -1,5 +1,5 @@
-from tabpfn.finetuning import FinetunedTabPFNClassifier
-from sklearn.metrics import accuracy_score
+from tabpfn.finetuning import FinetunedTabPFNRegressor
+from sklearn.metrics import root_mean_squared_error
 from pathlib import Path
 import os
 import pandas as pd
@@ -21,34 +21,35 @@ def train_and_test(data_path : str, model_path : str) :
     X_test = test_df
     y_test = result_df[columns]
 
-    model = FinetunedTabPFNClassifier(
+    print(len(X_train), len(y_train), len(X_test), len(y_test))
+
+    model = FinetunedTabPFNRegressor(
         device='cuda',
         save_checkpoint_interval=None,
         epochs=40,
         early_stopping_patience=15,
+        validation_split_ratio=0.1
     )
     model = model.fit(X_train, y_train, output_dir=Path(model_path))
 
-
     y_pred = model.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
+    rmse = root_mean_squared_error(y_test, y_pred)
 
-    print(f"Accuracy of {data_path}: {acc}")
+    print(f"RMSE of {data_path}: {rmse}")
 
-    return acc
-
+    return rmse
 
 if __name__ == "__main__" :
-    root_path = "../data/cls"
+    root_path = "../data/reg"
     root_model_path = "models"
 
     res = {}
     for item in os.listdir(root_path) :
         data_path = os.path.join(root_path, item)
-        model_path = os.path.join(root_model_path, f"cls-{item}")
+        model_path = os.path.join(root_model_path, f"reg-{item}")
         acc = train_and_test(data_path, model_path)
 
         res[item] = acc
 
-    datas = pd.DataFrame(list(res.items()), columns=['name', 'acc'])
-    datas.to_csv('result-cls.txt')
+    datas = pd.DataFrame(list(res.items()), columns=['name', 'rmse'])
+    datas.to_csv('result-reg.txt')
