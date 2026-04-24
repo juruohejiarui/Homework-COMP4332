@@ -1,0 +1,11 @@
+task dataset   metric    value
+ cls       1 accuracy 0.864457
+ cls       2 accuracy 0.741130
+ cls       3 accuracy 0.660973
+ cls       4 accuracy 0.707243
+ cls       5 accuracy 0.719021
+ reg       1     rmse 1.990758
+ reg       2     rmse 3.672182
+ reg       3     rmse 0.618416
+ reg       4     rmse 0.026473
+ reg       5     rmse 0.213185

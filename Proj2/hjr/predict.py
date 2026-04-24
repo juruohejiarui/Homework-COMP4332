@@ -6,23 +6,24 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler
 from tabpfn import TabPFNClassifier, TabPFNRegressor
 
-def load_xy(train_path: Path, test_path: Path):
+def load_xy(train_path: Path, test_path: Path, scale: bool = True):
     train_df = pd.read_csv(train_path)
     test_df = pd.read_csv(test_path)
 
     # 最后一列是 target
     target_col = train_df.columns[-1]
 
-    scaler = StandardScaler()
-    # only scale float columns except target_col
-    feature_cols = train_df.select_dtypes(include=["float"]).columns.tolist()
-    if len(feature_cols) > 1 :
-        feature_cols = [col for col in feature_cols if col != target_col]
-        train_df[feature_cols] = scaler.fit_transform(train_df[feature_cols])
-        test_df[feature_cols] = scaler.transform(test_df[feature_cols])
+    if scale :
+        scaler = StandardScaler()
+        # only scale float columns except target_col
+        feature_cols = train_df.select_dtypes(include=["float"]).columns.tolist()
+        if len(feature_cols) > 1 :
+            feature_cols = [col for col in feature_cols if col != target_col]
+            train_df[feature_cols] = scaler.fit_transform(train_df[feature_cols])
+            test_df[feature_cols] = scaler.transform(test_df[feature_cols])
 
     X_train = train_df.iloc[:, :-1].to_numpy()
     y_train = train_df.iloc[:, -1].to_numpy()
@@ -36,10 +37,6 @@ def load_xy(train_path: Path, test_path: Path):
         X_test = test_df.to_numpy()
 
     return X_train, y_train, X_test, target_col
-
-import numpy as np
-
-import numpy as np
 
 def stratified_min_per_class_sample(
     X: np.ndarray,
@@ -268,19 +265,21 @@ def maybe_subsample_context(X, y, max_context: int, task: str, seed: int):
             oversample_small_bins=True,
         )
 
-def run_one_dataset(dataset_dir: Path, task: str, out_dir: Path, max_context: int, seed: int, device: str):
+def run_one_dataset(dataset_dir: Path, task: str, out_dir: Path, max_context: int, seed: int, device: str, scale: bool):
     train_path = dataset_dir / "train.csv"
     test_path = dataset_dir / "test.csv"
 
-    X_train, y_train, X_test, target_col = load_xy(train_path, test_path)
+    X_train, y_train, X_test, target_col = load_xy(train_path, test_path, scale=scale)
     X_ctx, y_ctx = maybe_subsample_context(X_train, y_train, max_context, task, seed)
 
     if task == "cls":
         model = TabPFNClassifier(device=device)
+        model = model.create_default_for_version("v2.6")
         model.fit(X_ctx, y_ctx)
         pred = model.predict(X_test)
     else:
         model = TabPFNRegressor(device=device)
+        model = model.create_default_for_version("v2.6")
         model.fit(X_ctx, y_ctx)
         pred = model.predict(X_test)
 
@@ -295,6 +294,7 @@ def main():
     ap.add_argument("--data_root", type=str, default="data", help="data 目录，包含 reg/ 和 cls/")
     ap.add_argument("--out_root", type=str, default="predictions", help="输出目录")
     ap.add_argument("--max_context", type=int, default=3000, help="上下文最大训练行数（太大可能超上下文限制/变慢）")
+    ap.add_argument("--scale", action="store_true", help="是否对数值特征进行标准化")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--device", type=str, default="cpu", help="cpu 或 cuda")
     args = ap.parse_args()
@@ -316,6 +316,7 @@ def main():
                 max_context=args.max_context,
                 seed=args.seed,
                 device=args.device,
+                scale=args.scale
             )
             print(f"[{task}] {dataset_dir.name}: wrote {pred_path}")
 
