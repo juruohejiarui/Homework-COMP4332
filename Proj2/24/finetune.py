@@ -1,6 +1,6 @@
 import os
 os.environ["TABPFN_DISABLE_TELEMETRY"] = "1"
-
+# we hack the code of tabpfn.finetuning to support v2.6, which is the lastest version. default code only supports v2.5.
 from tabpfn.finetuning import FinetunedTabPFNRegressor, FinetunedTabPFNClassifier
 from tabpfn.finetuning.train_util import get_checkpoint_path_and_epoch_from_output_dir
 from sklearn.metrics import root_mean_squared_error, accuracy_score
@@ -66,6 +66,7 @@ def train_and_test(data_path : str, model_path : str, max_epoch : int = 100) -> 
             break
         except Exception as e :
             print(f"Error with ctx_samples={ctx_samples}: {e}")
+            del model # Free up memory
             continue
 
     y_pred = model.predict(X_test)
@@ -83,7 +84,7 @@ def train_and_test(data_path : str, model_path : str, max_epoch : int = 100) -> 
     return rmse
 
 if __name__ == "__main__" :
-    root_path = "../data/reg"
+    root_path = "./data/reg"
     root_model_path = "models"
 
     res = {}
@@ -97,7 +98,7 @@ if __name__ == "__main__" :
     datas = pd.DataFrame(list(res.items()), columns=['name', 'rmse'])
     datas.to_csv('result-reg.txt')
 
-    root_path = "../data/cls"
+    root_path = "./data/cls"
     root_model_path = "models"
 
     res = {}
@@ -111,13 +112,13 @@ if __name__ == "__main__" :
     datas = pd.DataFrame(list(res.items()), columns=['name', 'acc'])
     datas.to_csv('result-cls.txt')
 
-    # move prediction files to ../data/cls and ../data/reg
+    # move prediction files to ./data/cls and ./data/reg
     for item in os.listdir("models") :
         if item.startswith("reg-") :
             pred_path = os.path.join("models", item, "finetuned-pred.csv")
             if os.path.exists(pred_path) :
-                os.rename(pred_path, os.path.join("../data/reg", item[4:], f"predict-f.csv"))
+                os.rename(pred_path, os.path.join("./data/reg", item[4:], f"predict.csv"))
         elif item.startswith("cls-") :
             pred_path = os.path.join("models", item, "finetuned-pred.csv")
             if os.path.exists(pred_path) :
-                os.rename(pred_path, os.path.join("../data/cls", item[4:], f"predict-f.csv"))
+                os.rename(pred_path, os.path.join("./data/cls", item[4:], f"predict.csv"))
