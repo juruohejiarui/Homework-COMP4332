@@ -273,12 +273,12 @@ def run_one_dataset(dataset_dir: Path, task: str, out_dir: Path, max_context: in
     X_ctx, y_ctx = maybe_subsample_context(X_train, y_train, max_context, task, seed)
 
     if task == "cls":
-        model = TabPFNClassifier(device=device)
+        model = TabPFNClassifier(device=device, random_state=42)
         model = model.create_default_for_version("v2.6")
         model.fit(X_ctx, y_ctx)
         pred = model.predict(X_test)
     else:
-        model = TabPFNRegressor(device=device)
+        model = TabPFNRegressor(device=device, random_state=42)
         model = model.create_default_for_version("v2.6")
         model.fit(X_ctx, y_ctx)
         pred = model.predict(X_test)

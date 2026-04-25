@@ -33,7 +33,7 @@ def train_and_test(data_path : str, model_path : str, max_epoch : int = 100) -> 
     print(len(X_train), len(y_train), len(X_test), len(y_test))
 
     metric = None
-    opt_ctx_samples = [10000, 5000, 4000, 3000, 2000, 1000]
+    opt_ctx_samples = [10000, 7500, 5000, 4500, 4000, 3500, 3000, 2500, 2000, 1500, 1000]
     
     for ctx_samples in opt_ctx_samples :
         try :
@@ -43,9 +43,10 @@ def train_and_test(data_path : str, model_path : str, max_epoch : int = 100) -> 
                     device='cuda',
                     save_checkpoint_interval=None,
                     epochs=max_epoch,
-                    early_stopping_patience=15,
+                    early_stopping_patience=20,
                     validation_split_ratio=0.1,
                     random_state=42,
+                    n_estimators_validation=1,
                     n_finetune_ctx_plus_query_samples=ctx_samples
                 )
                 metric = root_mean_squared_error
@@ -54,9 +55,10 @@ def train_and_test(data_path : str, model_path : str, max_epoch : int = 100) -> 
                     device='cuda',
                     save_checkpoint_interval=None,
                     epochs=max_epoch,
-                    early_stopping_patience=15,
+                    early_stopping_patience=20,
                     validation_split_ratio=0.1,
                     random_state=42,
+                    n_estimators_validation=1,
                     n_finetune_ctx_plus_query_samples=ctx_samples
                 )
                 metric = accuracy_score
