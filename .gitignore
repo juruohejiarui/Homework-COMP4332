@@ -1,5 +1,6 @@
 .DS_Store
 *.pt
+*.npy
 Proj1/hjr/*/merged
 Proj1/hjr/*/checkpoint*
 *.pyc

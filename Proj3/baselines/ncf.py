@@ -40,9 +40,9 @@ def build_id_map(values):
 
 class RatingDataset(Dataset):
     def __init__(self, users, items, ratings):
-        self.u = torch.LongTensor(users)
-        self.i = torch.LongTensor(items)
-        self.r = torch.FloatTensor(ratings)
+        self.u = torch.LongTensor(users.copy())
+        self.i = torch.LongTensor(items.copy())
+        self.r = torch.FloatTensor(ratings.copy())
 
     def __len__(self):
         return len(self.u)
@@ -112,9 +112,9 @@ def predict_with_fallback(model, df, u_map, i_map, global_mean):
 
 
 def main():
-    train = pd.read_csv("data/train.csv",      usecols=["ReviewerID", "ProductID", "Star"])
-    valid = pd.read_csv("data/validation.csv", usecols=["ReviewerID", "ProductID", "Star"])
-    test  = pd.read_csv("data/test.csv",       usecols=["ReviewerID", "ProductID", "Star"])
+    train = pd.read_csv("../data/train.csv",      usecols=["ReviewerID", "ProductID", "Star"])
+    valid = pd.read_csv("../data/validation.csv", usecols=["ReviewerID", "ProductID", "Star"])
+    test  = pd.read_csv("../data/test.csv",       usecols=["ReviewerID", "ProductID", "Star"])
 
     u_map = build_id_map(train["ReviewerID"])
     i_map = build_id_map(train["ProductID"])
@@ -160,13 +160,13 @@ def main():
     # Validation predictions — sanity check via `python evaluate.py --pred val_pred_ncf.csv`
     valid_out = valid.copy()
     valid_out["Star"] = predict_with_fallback(model, valid, u_map, i_map, global_mean)
-    valid_out.to_csv("val_pred_ncf.csv", index=False)
+    valid_out.to_csv("../val_pred_ncf.csv", index=False)
     print("Saved val_pred_ncf.csv")
 
     # Test predictions — rename to prediction.csv before submitting
     test_out = test.copy()
     test_out["Star"] = predict_with_fallback(model, test, u_map, i_map, global_mean)
-    test_out.to_csv("prediction_ncf.csv", index=False)
+    test_out.to_csv("../prediction_ncf.csv", index=False)
     print("Saved prediction_ncf.csv")
 
 
