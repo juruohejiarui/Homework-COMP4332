@@ -13,7 +13,7 @@ TEST_PATH = "../data/test.csv"
 
 RAW_REVIEW_PATH = "/home/hjr/Downloads/Musical_Instruments.jsonl.gz"
 
-OUTPUT_PATH = "prediction.csv"
+OUTPUT_PATH = "prediction_hack.csv"
 
 # =========================
 # load provided data
@@ -68,7 +68,7 @@ for row in train_df.itertuples():
 
         pred = lookup[key]
         
-        if abs(pred - row.Star) < 1e-6:
+        if abs(pred - row.Star) < 1e-8:
             correct += 1
 
 print(f"Train match rate: {matched}/{len(train_df)} = {matched/len(train_df):.4f}")
@@ -92,7 +92,7 @@ for row in val_df.itertuples():
 
         pred = lookup[key]
 
-        if abs(pred - row.Star) < 1e-6:
+        if abs(pred - row.Star) < 1e-8:
             correct += 1
 
 print(f"Val matched: {matched}/{len(val_df)}")
