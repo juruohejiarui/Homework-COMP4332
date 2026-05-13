@@ -332,6 +332,10 @@ def main():
     for ep in range(1, args.epochs + 1):
         model.train()
         perm = np.random.permutation(len(df_tr))
+        
+        train_pred = []
+        train_target = []
+
         for s in range(0, len(df_tr), args.bs):
             ix = perm[s:s+args.bs]
             u = torch.tensor(tr_u[ix], dtype=torch.long, device=device)
@@ -348,8 +352,12 @@ def main():
             ut = torch.tensor(u_text_emb[u.detach().cpu().numpy()], dtype=torch.float32, device=device)
             itx = torch.tensor(i_text_emb[it.detach().cpu().numpy()], dtype=torch.float32, device=device)
 
-            p = model(u, it, bag_idx, bag_off, br, mc, cidx, coff, num, ut, itx)
+            p : torch.Tensor = model(u, it, bag_idx, bag_off, br, mc, cidx, coff, num, ut, itx)
             loss = F.mse_loss(p, y)
+
+            train_pred.extend(p.detach().cpu().numpy().tolist())
+            train_target.extend(y.detach().cpu().numpy().tolist())
+
             if args.reg > 0: 
                 loss = loss + args.reg * (model.pu(u).pow(2).mean() + model.qi(it).pow(2).mean() + model.bias_u(u).pow(2).mean() + model.bias_i(it).pow(2).mean())
             opt.zero_grad(set_to_none=True)
@@ -357,11 +365,13 @@ def main():
             opt.step()
             sch.step()
 
+        train_rmse = rmse(torch.Tensor(train_pred), torch.Tensor(train_target))
+
         v = eval_loop(model, df_va, u2i, i2i, hist, item_brand, item_mc, item_num, item_cat_idx, item_cat_off, u_text_emb, i_text_emb, device, args.bs)
         if v < best:
             best = v
             torch.save({"state": model.state_dict(), "u2i": u2i, "i2i": i2i, "mu": mu, "store2i": store2i, "mc2i": mc2i, "st_model": args.st_model}, args.out + ".pt")
-        print(f"epoch = {ep}  valid_rmse = {v:.6f}  best = {best:.6f}")
+        print(f"epoch = {ep:>4d} train_rmse = {train_rmse:.6f} valid_rmse = {v:.6f}  best = {best:.6f}")
 
     ck = torch.load(args.out + ".pt", map_location=device); model.load_state_dict(ck["state"])
     pred = predict_loop(model, df_te, u2i, i2i, hist, item_brand, item_mc, item_num, item_cat_idx, item_cat_off, u_text_emb, i_text_emb, device, args.bs)
