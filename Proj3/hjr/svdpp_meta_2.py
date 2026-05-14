@@ -5,22 +5,34 @@ import numpy as np, pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-# pip install -U sentence-transformers
 from sentence_transformers import SentenceTransformer
 
-def seed_all(s): random.seed(s); np.random.seed(s); torch.manual_seed(s); torch.cuda.manual_seed_all(s)
+def seed_all(s): 
+    random.seed(s)
+    np.random.seed(s)
+    torch.manual_seed(s)
+    torch.cuda.manual_seed_all(s)
 
-def rmse(pred, y): return float(torch.sqrt(F.mse_loss(pred, y)).item())
+def rmse(pred, y):
+    return float(torch.sqrt(F.mse_loss(pred, y)).item())
 
 def stable_hash(s, mod):
     h = 2166136261
-    for ch in s.encode("utf-8", errors="ignore"): h = (h ^ ch) * 16777619 & 0xffffffff
+    for ch in s.encode("utf-8", errors="ignore"): 
+        h = (h ^ ch) * 16777619 & 0xffffffff
     return int(h % mod)
 
+def safe_float(x) -> float :
+    try :
+        return float(x) if x is not None else 0.0
+    except :
+        return 0.0
+
 def log1p_safe(v):
-    try: return float(np.log1p(max(0.0, float(v))))
-    except: return 0.0
+    try: 
+        return float(np.log1p(max(0.0, float(v))))
+    except: 
+        return 0.0
 
 def clean_text(s):
     if s is None: return ""
@@ -67,13 +79,9 @@ def load_product_meta(path, cat_hash, min_rating_number, use_store, use_mc, use_
         price = x.get("price", 0.0)
         ar = x.get("average_rating", 0.0)
         rn = x.get("rating_number", 0.0)
-        try: price = float(price) if price is not None else 0.0
-        except: price = 0.0
-        try: ar = float(ar) if ar is not None else 0.0
-        except: ar = 0.0
-        try: rn = float(rn) if rn is not None else 0.0
-        except: rn = 0.0
-        if rn < min_rating_number: ar = 0.0; rn = 0.0
+        price, ar, rn = safe_float(price), safe_float(ar), safe_float(rn)
+        if rn < min_rating_number: 
+            ar, rn = 0.0, 0.0
         cats = []
         if use_cats:
             for c in (x.get("categories") or []):
@@ -102,8 +110,10 @@ def pack_item_bag(i_batch, item_cat_idx, item_cat_off):
     for it in i_batch:
         a = int(item_cat_off[it]); b = int(item_cat_off[it + 1])
         xs = item_cat_idx[a:b]
-        if len(xs) == 0: xs = np.array([0], dtype=np.int64)
-        idx.extend(xs.tolist()); off.append(off[-1] + int(len(xs)))
+        if len(xs) == 0: 
+            xs = np.array([0], dtype=np.int64)
+        idx.extend(xs.tolist())
+        off.append(off[-1] + int(len(xs)))
     return torch.tensor(idx, dtype=torch.long), torch.tensor(off, dtype=torch.long)
 
 def build_item_static_text(product_json, i2i, max_chars):
@@ -117,13 +127,14 @@ def build_item_static_text(product_json, i2i, max_chars):
         mc = clean_text(x.get("main_category", ""))
         desc = " ".join([clean_text(t) for t in (x.get("description") or []) if t is not None])
         feats = " ".join([clean_text(t) for t in (x.get("features") or []) if t is not None])
-        # cats = " ".join([clean_text(c) for c in (x.get("categories") or []) if c is not None])
+        cats = " ".join([clean_text(c) for c in (x.get("categories") or []) if c is not None])
         txt = " | ".join([t for t in [
                                       store, 
                                       mc, 
                                       title, 
                                       desc, 
-                                      feats
+                                      feats,
+                                      cats
                                     ] if len(t) > 0])
         if max_chars > 0: txt = txt[:max_chars]
         pid2txt[pid] = txt
@@ -210,26 +221,29 @@ class SVDppMetaText(nn.Module):
         return base + res
 
 @torch.no_grad()
-def eval_loop(model, df, u2i, i2i, hist, item_brand, item_mc, item_num, item_cat_idx, item_cat_off, u_text_emb, i_text_emb, device, bs):
+def eval_loop(model, df, u2i, i2i, hist, item_brand, item_mc, item_num, item_cat_idx, item_cat_off, u_text_emb, i_text_emb, device, bs) -> tuple[torch.Tensor, float]:
     model.eval(); ys = []; ps = []
     for s in range(0, len(df), bs):
         b = df.iloc[s:s+bs]
         u = torch.tensor([u2i[x] for x in b["ReviewerID"].values], dtype=torch.long, device=device)
         it = torch.tensor([i2i[x] for x in b["ProductID"].values], dtype=torch.long, device=device)
         bag_idx, bag_off = pack_bag(u.detach().cpu().tolist(), hist)
-        bag_idx = bag_idx.to(device); bag_off = bag_off.to(device)
+        bag_idx = bag_idx.to(device)
+        bag_off = bag_off.to(device)
         br = torch.tensor(item_brand[it.detach().cpu().numpy()], dtype=torch.long, device=device)
         mc = torch.tensor(item_mc[it.detach().cpu().numpy()], dtype=torch.long, device=device)
         num = torch.tensor(item_num[it.detach().cpu().numpy()], dtype=torch.float32, device=device)
         cidx, coff = pack_item_bag(it.detach().cpu().tolist(), item_cat_idx, item_cat_off)
-        cidx = cidx.to(device); coff = coff.to(device)
+        cidx = cidx.to(device)
+        coff = coff.to(device)
         ut = torch.tensor(u_text_emb[u.detach().cpu().numpy()], dtype=torch.float32, device=device)
         itx = torch.tensor(i_text_emb[it.detach().cpu().numpy()], dtype=torch.float32, device=device)
         p = model(u, it, bag_idx, bag_off, br, mc, cidx, coff, num, ut, itx).clamp(1.0, 5.0)
         y = torch.tensor(b["Star"].values, dtype=torch.float32, device=device)
-        ps.append(p); ys.append(y)
+        ps.append(p)
+        ys.append(y)
     ps = torch.cat(ps); ys = torch.cat(ys)
-    return rmse(ps, ys)
+    return ps, rmse(ps, ys)
 
 @torch.no_grad()
 def predict_loop(model, df, u2i, i2i, hist, item_brand, item_mc, item_num, item_cat_idx, item_cat_off, u_text_emb, i_text_emb, device, bs):
@@ -238,11 +252,15 @@ def predict_loop(model, df, u2i, i2i, hist, item_brand, item_mc, item_num, item_
         b = df.iloc[s:s+bs]
         u = torch.tensor([u2i[x] for x in b["ReviewerID"].values], dtype=torch.long, device=device)
         it = torch.tensor([i2i[x] for x in b["ProductID"].values], dtype=torch.long, device=device)
-        bag_idx, bag_off = pack_bag(u.detach().cpu().tolist(), hist); bag_idx = bag_idx.to(device); bag_off = bag_off.to(device)
+        bag_idx, bag_off = pack_bag(u.detach().cpu().tolist(), hist)
+        bag_idx = bag_idx.to(device)
+        bag_off = bag_off.to(device)
         br = torch.tensor(item_brand[it.detach().cpu().numpy()], dtype=torch.long, device=device)
         mc = torch.tensor(item_mc[it.detach().cpu().numpy()], dtype=torch.long, device=device)
         num = torch.tensor(item_num[it.detach().cpu().numpy()], dtype=torch.float32, device=device)
-        cidx, coff = pack_item_bag(it.detach().cpu().tolist(), item_cat_idx, item_cat_off); cidx = cidx.to(device); coff = coff.to(device)
+        cidx, coff = pack_item_bag(it.detach().cpu().tolist(), item_cat_idx, item_cat_off)
+        cidx = cidx.to(device)
+        coff = coff.to(device)
         ut = torch.tensor(u_text_emb[u.detach().cpu().numpy()], dtype=torch.float32, device=device)
         itx = torch.tensor(i_text_emb[it.detach().cpu().numpy()], dtype=torch.float32, device=device)
         p = model(u, it, bag_idx, bag_off, br, mc, cidx, coff, num, ut, itx).clamp(1.0, 5.0).detach().cpu().numpy()
@@ -255,7 +273,8 @@ def main():
     ap.add_argument("--valid", type=str, default="../data/validation.csv")
     ap.add_argument("--test", type=str, default="../data/test.csv")
     ap.add_argument("--product_json", type=str, default="../data/product.json")
-    ap.add_argument("--out", type=str, default="prediction.csv")
+    ap.add_argument("--valid_out", type=str, default="val_pred.csv")
+    ap.add_argument("--test_out", type=str, default="prediction.csv")
     ap.add_argument("--k", type=int, default=128)
     ap.add_argument("--cat_k", type=int, default=256)
     ap.add_argument("--cat_hash", type=int, default=20000)
@@ -273,9 +292,11 @@ def main():
     ap.add_argument("--st_model", type=str, default="sentence-transformers/all-mpnet-base-v2")
     ap.add_argument("--st_bs", type=int, default=128)
     ap.add_argument("--st_norm", action="store_true")
-    ap.add_argument("--doc_max_reviews", type=int, default=20); ap.add_argument("--doc_max_chars", type=int, default=16384)
+    ap.add_argument("--doc_max_reviews", type=int, default=20)
+    ap.add_argument("--doc_max_chars", type=int, default=16384)
     ap.add_argument("--cache_dir", type=str, default="cache_st")
-    ap.add_argument("--device", type=str, default="cuda"); ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--device", type=str, default="cuda")
+    ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
     seed_all(args.seed)
@@ -328,7 +349,7 @@ def main():
     tr_i = np.array([i2i[x] for x in df_tr["ProductID"].values], dtype=np.int64)
     tr_y = df_tr["Star"].values.astype(np.float32)
 
-    best = 1e9
+    best, best_val_pred = 1e9, None
     for ep in range(1, args.epochs + 1):
         model.train()
         perm = np.random.permutation(len(df_tr))
@@ -367,15 +388,26 @@ def main():
 
         train_rmse = rmse(torch.Tensor(train_pred), torch.Tensor(train_target))
 
-        v = eval_loop(model, df_va, u2i, i2i, hist, item_brand, item_mc, item_num, item_cat_idx, item_cat_off, u_text_emb, i_text_emb, device, args.bs)
+        val_preds, v = eval_loop(model, df_va, u2i, i2i, hist, item_brand, item_mc, item_num, item_cat_idx, item_cat_off, u_text_emb, i_text_emb, device, args.bs)
         if v < best:
-            best = v
-            torch.save({"state": model.state_dict(), "u2i": u2i, "i2i": i2i, "mu": mu, "store2i": store2i, "mc2i": mc2i, "st_model": args.st_model}, args.out + ".pt")
+            best_val_pred, best = val_preds.cpu().numpy().astype(np.float32), v
+            torch.save({"state": model.state_dict(), "u2i": u2i, "i2i": i2i, "mu": mu, "store2i": store2i, "mc2i": mc2i, "st_model": args.st_model}, args.test_out + ".pt")
         print(f"epoch = {ep:>4d} train_rmse = {train_rmse:.6f} valid_rmse = {v:.6f}  best = {best:.6f}")
 
-    ck = torch.load(args.out + ".pt", map_location=device); model.load_state_dict(ck["state"])
-    pred = predict_loop(model, df_te, u2i, i2i, hist, item_brand, item_mc, item_num, item_cat_idx, item_cat_off, u_text_emb, i_text_emb, device, args.bs)
-    sub = df_te[["ReviewerID", "ProductID"]].copy(); sub["Star"] = pred.astype(np.float32)
-    sub.to_csv(args.out, index=False); print("saved:", args.out)
+    ck = torch.load(args.test_out + ".pt", map_location=device)
+    model.load_state_dict(ck["state"])
+    # save prediction on validation set
+    sub = df_va[['ReviewerID', 'ProductID']].copy()
+    sub['Star'] = best_val_pred
+    sub.to_csv(args.valid_out, index=False)
+    print(f"validation prediction save to {args.valid_out}")
 
-if __name__ == "__main__": main()
+    # make prediction on test set
+    pred = predict_loop(model, df_te, u2i, i2i, hist, item_brand, item_mc, item_num, item_cat_idx, item_cat_off, u_text_emb, i_text_emb, device, args.bs)
+    sub = df_te[["ReviewerID", "ProductID"]].copy()
+    sub["Star"] = pred.astype(np.float32)
+    sub.to_csv(args.test_out, index=False)
+    print(f"test prediction save to {args.test_out}")
+
+if __name__ == "__main__": 
+    main()

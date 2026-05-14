@@ -32,7 +32,7 @@ print("test:", len(test_df))
 # (user_id, parent_asin) -> rating
 # =========================
 
-lookup = {}
+lookup : dict[tuple[str, str], list[tuple[str, float]]]= {}
 
 print("Loading raw Amazon reviews...")
 
@@ -43,12 +43,19 @@ with gzip.open(RAW_REVIEW_PATH, "rt", encoding="utf-8") as f:
 
         user_id = obj.get("user_id")
         parent_asin = obj.get("parent_asin")
+        # parent_asin = obj.get("asin")
         rating = obj.get("rating")
 
         if user_id is None or parent_asin is None:
             continue
-
-        lookup[(user_id, parent_asin)] = float(rating)
+        
+        tpl = (user_id, parent_asin)
+        if tpl not in lookup :
+            lookup[tpl] = float(rating)
+        else :
+            # if abs(lookup[tpl] - float(rating)) > 1e-8 :
+                # del lookup[tpl]
+            lookup[(user_id, parent_asin)] = float(rating)
 
 print("lookup size:", len(lookup))
 
@@ -67,7 +74,7 @@ for row in train_df.itertuples():
         matched += 1
 
         pred = lookup[key]
-        
+
         if abs(pred - row.Star) < 1e-8:
             correct += 1
 
