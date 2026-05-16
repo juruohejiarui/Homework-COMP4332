@@ -1,1 +1,1 @@
-/home/hjr/Documents/Projects/Homework-COMP4332/Proj3/24/average.py
+./24/average.py

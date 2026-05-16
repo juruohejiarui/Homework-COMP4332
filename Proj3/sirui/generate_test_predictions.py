@@ -1,1 +1,1 @@
-/home/hjr/Documents/Projects/Homework-COMP4332/Proj3/24/lightgbm/generate_test_predictions.py
+../24/lightgbm/generate_test_predictions.py
