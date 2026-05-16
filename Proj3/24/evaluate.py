@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_TRUTH = ROOT / "hjr" / "prediction_hack.csv"
+DEFAULT_TRUTH = ROOT / "data" / "validation.csv"
 
 
 def main() -> None:
